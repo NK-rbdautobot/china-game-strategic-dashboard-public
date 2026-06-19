@@ -118,10 +118,10 @@ async function loadSupabaseEdits(){
       edits.forEach(e=>{
         const r=byId[String(e.app_id||'').replace(/\.0$/,'')];
         if(!r) return;
-        r.战略大品类Tag=e.big||r.战略大品类Tag;
-        r.战略细分品类Tag=e.sub||r.战略细分品类Tag;
-        r.전략대분류_KO=e.big_ko||BIG_META[r.战略大品类Tag]?.전략대분류_KO||r.전략대분류_KO;
-        r.전략세부분류_KO=e.sub_ko||SUB_META[`${r.战略大品类Tag}||${r.战略细分品类Tag}`]?.전략세부분류_KO||r.전략세부분류_KO;
+        r.战略大品类Tag=normalizeBigName(e.big||r.战略大品类Tag);
+        r.战略细分品类Tag=normalizeSubName(e.sub||r.战略细分品类Tag);
+        r.전략대분류_KO=normalizeBigName(e.big_ko||BIG_META[r.战略大品类Tag]?.전략대분류_KO||r.전략대분류_KO);
+        r.전략세부분류_KO=normalizeSubName(e.sub_ko||SUB_META[`${r.战略大品类Tag}||${r.战略细分品类Tag}`]?.전략세부분류_KO||r.전략세부분류_KO);
         r.__origBig=r.战略大品类Tag; r.__origSub=r.战略细分品类Tag;
       });
     }
