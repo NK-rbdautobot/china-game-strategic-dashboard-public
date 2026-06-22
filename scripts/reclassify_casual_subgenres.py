@@ -22,8 +22,11 @@ DOWNLOADS = ROOT / "docs" / "downloads"
 INDEX = ROOT / "docs" / "index.html"
 FINAL_DB = DOWNLOADS / "china_game_final_strategic_genre_db.csv"
 DASH_ROWS = DOWNLOADS / "china_game_dashboard_rows.csv"
+BIG_SUMMARY = DOWNLOADS / "china_game_big_category_summary.csv"
 SUB_SUMMARY = DOWNLOADS / "china_game_subcategory_summary.csv"
 CASUAL_AUDIT = DOWNLOADS / "casual_subgenre_reclassification_audit.csv"
+ROLLUP_AUDIT = DOWNLOADS / "genre_rollup_reclassification_audit.csv"
+GENRE_AUDIT_REPORT = DOWNLOADS / "china_game_genre_audit_report.txt"
 
 CASUAL_SUBS = ["방치", "경쟁/파티", "타워디펜스", "아케이드", "러닝", "로그라이크"]
 
@@ -34,7 +37,7 @@ OVERRIDES = {
     "1632344522": ("캐주얼", "경쟁/파티", "소셜 파티/UGC 경쟁 게임"),  # 元梦之星
     "1593603378": ("스포츠/레이싱", "스포츠", "NBA 라이선스 농구 스포츠 게임"),  # 全明星街球派对
     "1326730621": ("캐주얼", "경쟁/파티", "캐주얼 배틀로얄/멀티 경쟁 파티 성격"),  # 香肠派对
-    "1300107673": ("음악/댄스", "리듬 탭", "걸즈 밴드 리듬 게임"),  # 梦想协奏曲！少女乐团派对！
+    "1300107673": ("리듬게임", "리듬게임", "걸즈 밴드 리듬 게임"),  # 梦想协奏曲！少女乐团派对！
     "6475333544": ("캐주얼", "경쟁/파티", "협동 요리 파티 게임"),  # 暴吵萌厨
     "1471085940": ("캐주얼", "경쟁/파티", "보드/추리 기반 멀티 파티 게임"),  # 推理学院
     "1596540193": ("슈팅", "슈팅", "전술 슈팅/TPS 성격이 강함"),  # 卡拉彼丘
@@ -50,6 +53,9 @@ SUB_NORMALIZE = {
     "라이트 경쟁": "경쟁/파티",
     "캐주얼 경쟁": "경쟁/파티",
     "캐주얼 슈팅": "아케이드",
+    "5v5 공정 MOBA": "MOBA",
+    "리듬 탭": "리듬게임",
+    "댄스/코디": "리듬게임",
 }
 BIG_NORMALIZE = {
     "FPS/TPS": "슈팅",
@@ -57,6 +63,8 @@ BIG_NORMALIZE = {
     "애니메이션": "애니메이션/IP",
     "보드/체스/마작": "카지노",
     "카드게임": "수집형 게임",
+    "여성향 전용": "여성향 게임",
+    "음악/댄스": "리듬게임",
 }
 
 
@@ -83,6 +91,18 @@ def apply_to_dataframe(df: pd.DataFrame, *, final_db: bool = False) -> tuple[pd.
 
         if app_id in OVERRIDES:
             big, sub, reason = OVERRIDES[app_id]
+        elif big == "여성향 게임":
+            sub = "여성향 게임"
+            reason = "여성향 게임 세부분류 단일화"
+        elif big == "MOBA":
+            sub = "MOBA"
+            reason = "MOBA 세부분류 단일화"
+        elif big == "경영/시뮬레이션":
+            sub = "경영/시뮬레이션"
+            reason = "경영/시뮬레이션 세부분류 단일화"
+        elif big == "리듬게임":
+            sub = "리듬게임"
+            reason = "음악/댄스 → 리듬게임 대분류/세부분류 통일"
         elif big == "캐주얼":
             if sub not in CASUAL_SUBS:
                 # Last-resort deterministic fallback for future stray labels.
@@ -116,9 +136,9 @@ def apply_to_dataframe(df: pd.DataFrame, *, final_db: bool = False) -> tuple[pd.
         if "전략세부분류_KO" in df.columns:
             df.at[idx, "전략세부분류_KO"] = sub
         if final_db and (old_big != big or old_sub != sub) and "战略Tag_判定依据" in df.columns:
-            df.at[idx, "战略Tag_判定依据"] = f"캐주얼 세부분류 재정리: {reason}"
+            df.at[idx, "战略Tag_判定依据"] = f"전략 장르 정리: {reason}"
 
-        if old_big != big or old_sub != sub or big == "캐주얼":
+        if old_big != big or old_sub != sub or big in {"캐주얼", "여성향 게임", "MOBA", "경영/시뮬레이션", "리듬게임"}:
             changed_rows.append({
                 "App_ID": app_id,
                 "게임명": row.get("Qimai_중국_게임명", row.get("게임명_중문", row.get("App Name", ""))),
@@ -174,6 +194,41 @@ def recompute_summaries(rows: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]
     return big_df, sub_df
 
 
+def write_audit_report(rows: pd.DataFrame, audit: pd.DataFrame) -> None:
+    grouped = (
+        rows.groupby(["战略大品类Tag", "战略细分品类Tag"], dropna=False)
+        .size()
+        .to_frame("게임수")
+        .reset_index()
+        .sort_values(["게임수", "战略大品类Tag", "战略细分品类Tag"], ascending=[False, True, True])
+    )
+    blank_count = sum(
+        1
+        for big_value, sub_value in rows[["战略大品类Tag", "战略细分品类Tag"]].itertuples(index=False, name=None)
+        if pd.isna(big_value) or pd.isna(sub_value)
+    )
+    lines = [
+        "중국게임 전략 장르 전체 검수 최종 검증 리포트",
+        "",
+        f"전체 행 수: {len(rows):,}",
+        f"대분류 수: {rows['战略大品类Tag'].nunique():,}",
+        f"세부 분류 수: {rows['战略细分品类Tag'].nunique():,}",
+        f"대분류/세부 분류 빈칸: {blank_count:,}",
+        f"이번 재정리 감사 행 수: {len(audit):,}",
+        "",
+        "상위 장르 요약:",
+        grouped.head(80).to_string(index=False),
+        "",
+        "적용된 단일화 규칙:",
+        "- 여성향 게임 → 세부분류 여성향 게임",
+        "- MOBA → 세부분류 MOBA",
+        "- 경영/시뮬레이션 → 세부분류 경영/시뮬레이션",
+        "- 음악/댄스 대분류 → 리듬게임, 세부분류 → 리듬게임",
+        "- 캐주얼 → 방치/경쟁·파티/타워디펜스/아케이드/러닝/로그라이크",
+    ]
+    GENRE_AUDIT_REPORT.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def json_safe(value):
     """Convert pandas/numpy NaN values to JSON null for browser JSON.parse."""
     if isinstance(value, dict):
@@ -199,9 +254,28 @@ def update_index(rows: pd.DataFrame, big_df: pd.DataFrame, sub_df: pd.DataFrame)
     s = replace_json_script(s, "data", rows.to_dict(orient="records"))
     s = replace_json_script(s, "bigData", big_df.to_dict(orient="records"))
     s = replace_json_script(s, "subData", sub_df.to_dict(orient="records"))
-    # Runtime guard: browser-local/Supabase stale edits should not reintroduce `파티게임`.
+    # Runtime guard: browser-local/Supabase stale edits should not reintroduce legacy labels.
+    s = s.replace(
+        "function normalizeBigName(v){const m={'카드게임':'수집형 게임','FPS/TPS':'슈팅','경기/스포츠·레이싱':'스포츠/레이싱','애니메이션':'애니메이션/IP','보드/체스/마작':'카지노'}; return m[v]||v;}",
+        "function normalizeBigName(v){const m={'카드게임':'수집형 게임','FPS/TPS':'슈팅','경기/스포츠·레이싱':'스포츠/레이싱','애니메이션':'애니메이션/IP','보드/체스/마작':'카지노','여성향 전용':'여성향 게임','음악/댄스':'리듬게임'}; return m[v]||v;}"
+    )
     if "'파티게임':'경쟁/파티'" not in s:
         s = s.replace("'라이트 경쟁':'경쟁/파티'", "'라이트 경쟁':'경쟁/파티','파티게임':'경쟁/파티'")
+    if "'5v5 공정 MOBA':'MOBA'" not in s:
+        s = s.replace("'FPS':'슈팅'", "'5v5 공정 MOBA':'MOBA','리듬 탭':'리듬게임','댄스/코디':'리듬게임','FPS':'슈팅'")
+    if "function canonicalSubForBig" not in s:
+        s = s.replace(
+            "function applyEditToRow(r,e){if(e){if(e.big) r.战略大品类Tag=normalizeBigName(e.big); if(e.sub) r.战略细分品类Tag=normalizeSubName(e.sub);} r.战略大品类Tag=normalizeBigName(r.战略大品类Tag); r.전략대분류_KO=normalizeBigName(r.전략대분류_KO); r.战略细分品类Tag=normalizeSubName(r.战略细分品类Tag); r.전략세부분류_KO=normalizeSubName(r.전략세부분류_KO);",
+            "function canonicalSubForBig(big,sub){if(big==='여성향 게임') return '여성향 게임'; if(big==='MOBA') return 'MOBA'; if(big==='경영/시뮬레이션') return '경영/시뮬레이션'; if(big==='리듬게임') return '리듬게임'; return sub;}\nfunction applyEditToRow(r,e){if(e){if(e.big) r.战略大品类Tag=normalizeBigName(e.big); if(e.sub) r.战略细分品类Tag=normalizeSubName(e.sub);} r.战略大品类Tag=normalizeBigName(r.战略大品类Tag); r.전략대분류_KO=normalizeBigName(r.전략대분류_KO); r.战略细分品类Tag=canonicalSubForBig(r.战略大品类Tag,normalizeSubName(r.战略细分品类Tag)); r.전략세부분류_KO=canonicalSubForBig(r.战略大品类Tag,normalizeSubName(r.전략세부분류_KO));"
+        )
+    s = s.replace(
+        "r.战略细分品类Tag=e.sub||r.战略细分品类Tag;",
+        "r.战略细分品类Tag=canonicalSubForBig(r.战略大品类Tag,normalizeSubName(e.sub||r.战略细分品类Tag));"
+    )
+    s = s.replace(
+        "r.전략세부분류_KO=e.sub_ko||SUB_META[`${r.战略大品类Tag}||${r.战略细分品类Tag}`]?.전략세부분류_KO||r.전략세부분류_KO;",
+        "r.전략세부분류_KO=canonicalSubForBig(r.战略大品类Tag,normalizeSubName(e.sub_ko||SUB_META[`${r.战略大品类Tag}||${r.战略细分品类Tag}`]?.전략세부분류_KO||r.전략세부분류_KO));"
+    )
     INDEX.write_text(s, encoding="utf-8")
 
 
@@ -216,12 +290,14 @@ def main() -> None:
 
     final2.to_csv(FINAL_DB, index=False)
     dash2.to_csv(DASH_ROWS, index=False)
+    big_df.to_csv(BIG_SUMMARY, index=False)
     sub_df.to_csv(SUB_SUMMARY, index=False)
 
     audit = pd.concat([audit_dash, audit_final], ignore_index=True)
     audit = audit.drop_duplicates(subset=["App_ID", "최종_대분류", "최종_세부분류"]).sort_values(["최종_대분류", "최종_세부분류", "게임명"])
-    # The audit is intentionally focused on the final casual set plus rows moved out of old `파티게임`.
-    audit.to_csv(CASUAL_AUDIT, index=False)
+    audit.to_csv(ROLLUP_AUDIT, index=False)
+    audit[audit["최종_대분류"].eq("캐주얼")].to_csv(CASUAL_AUDIT, index=False)
+    write_audit_report(dash2, audit)
 
     update_index(dash2, big_df, sub_df)
 
@@ -229,6 +305,17 @@ def main() -> None:
     casual_subs = sorted(dash2.loc[dash2["战略大品类Tag"].eq("캐주얼"), "战略细分品类Tag"].unique())
     assert set(casual_subs) <= set(CASUAL_SUBS), casual_subs
     assert "파티게임" not in set(dash2["战略细分品类Tag"].astype(str)), "파티게임 remains in dashboard rows"
+    expected_singletons = {
+        "여성향 게임": {"여성향 게임"},
+        "MOBA": {"MOBA"},
+        "경영/시뮬레이션": {"경영/시뮬레이션"},
+        "리듬게임": {"리듬게임"},
+    }
+    for broad, expected in expected_singletons.items():
+        actual = set(dash2.loc[dash2["战略大品类Tag"].eq(broad), "战略细分品类Tag"].astype(str))
+        assert actual == expected, (broad, actual)
+    for old_big in ["여성향 전용", "음악/댄스"]:
+        assert old_big not in set(dash2["战略大品类Tag"].astype(str)), old_big
 
     src = INDEX.read_text(encoding="utf-8")
     for sid in ["data", "bigData", "subData", "cityData", "chinaMapData"]:
@@ -238,7 +325,7 @@ def main() -> None:
 
     print("casual_subs", casual_subs)
     print("casual_count", int(dash2["战略大品类Tag"].eq("캐주얼").sum()))
-    print("audit", CASUAL_AUDIT)
+    print("audit", ROLLUP_AUDIT)
 
 
 if __name__ == "__main__":
