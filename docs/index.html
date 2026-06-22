@@ -56,7 +56,7 @@ function subLabelAny(sub){return (SUB.find(x=>x.战略细分品类Tag===sub)?.�
 let EDITS={}; try{EDITS=JSON.parse(localStorage.getItem(EDIT_STORE_KEY)||'{}')||{};}catch(e){EDITS={};}
 function rowKey(r){return String(r.App_ID||r.Qimai_App_ID||r.게임명_중문||r.게임명_한글_초안||'');}
 function normalizeBigName(v){const m={'카드게임':'수집형 게임','FPS/TPS':'슈팅','경기/스포츠·레이싱':'스포츠/레이싱','애니메이션':'애니메이션/IP','보드/체스/마작':'카지노'}; return m[v]||v;}
-function normalizeSubName(v){const m={'라이트 SLG':'캐주얼 SLG','라이트 전략 SLG':'캐주얼 SLG','경량 SLG':'캐주얼 SLG','라이트 경쟁':'경쟁/파티','파티게임':'경쟁/파티','파티게임':'경쟁/파티','파티게임':'경쟁/파티','FPS':'슈팅'}; return m[v]||v;}
+function normalizeSubName(v){const m={'라이트 SLG':'캐주얼 SLG','라이트 전략 SLG':'캐주얼 SLG','경량 SLG':'캐주얼 SLG','라이트 경쟁':'경쟁/파티','파티게임':'경쟁/파티','FPS':'슈팅'}; return m[v]||v;}
 function applyEditToRow(r,e){if(e){if(e.big) r.战略大品类Tag=normalizeBigName(e.big); if(e.sub) r.战略细分品类Tag=normalizeSubName(e.sub);} r.战略大品类Tag=normalizeBigName(r.战略大品类Tag); r.전략대분류_KO=normalizeBigName(r.전략대분류_KO); r.战略细分品类Tag=normalizeSubName(r.战略细分品类Tag); r.전략세부분류_KO=normalizeSubName(r.전략세부분류_KO); const bm=BIG_META[r.战略大品类Tag]; if(bm) r.전략대분류_KO=bm.전략대분류_KO; const sm=SUB_META[`${r.战略大品类Tag}||${r.战略细分品类Tag}`]; if(sm) r.전략세부분류_KO=sm.전략세부분류_KO;}
 DATA.forEach(r=>applyEditToRow(r,EDITS[rowKey(r)]));
 function saveRowEdit(r){const k=rowKey(r); const origBig=r.__origBig||(r.__origBig=r.战略大品类Tag); const origSub=r.__origSub||(r.__origSub=r.战略细分品类Tag); if(r.战略大品类Tag===origBig&&r.战略细分品类Tag===origSub) delete EDITS[k]; else EDITS[k]={big:r.战略大品类Tag,sub:r.战略细分品类Tag,name:r.게임명_중문}; localStorage.setItem(EDIT_STORE_KEY,JSON.stringify(EDITS));}

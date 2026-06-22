@@ -200,7 +200,8 @@ def update_index(rows: pd.DataFrame, big_df: pd.DataFrame, sub_df: pd.DataFrame)
     s = replace_json_script(s, "bigData", big_df.to_dict(orient="records"))
     s = replace_json_script(s, "subData", sub_df.to_dict(orient="records"))
     # Runtime guard: browser-local/Supabase stale edits should not reintroduce `파티게임`.
-    s = s.replace("'라이트 경쟁':'경쟁/파티'", "'라이트 경쟁':'경쟁/파티','파티게임':'경쟁/파티'")
+    if "'파티게임':'경쟁/파티'" not in s:
+        s = s.replace("'라이트 경쟁':'경쟁/파티'", "'라이트 경쟁':'경쟁/파티','파티게임':'경쟁/파티'")
     INDEX.write_text(s, encoding="utf-8")
 
 
